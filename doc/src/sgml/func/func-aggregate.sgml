@@ -1415,4 +1415,138 @@ SELECT count(*) FROM sometable;
     rows).
    </para>
 
+  <sect2 id="functions-aggregate-listagg">
+   <title><literal>LISTAGG</literal></title>
+
+   <indexterm zone="functions-aggregate-listagg">
+    <primary>LISTAGG</primary>
+   </indexterm>
+
+   <para>
+    In Oracle mode, <productname>IvorySQL</productname> accepts the
+    Oracle-compatible <literal>LISTAGG</literal> aggregate, which concatenates
+    the values of an expression across the rows of a group:
+   </para>
+
+<synopsis>
+LISTAGG ( <replaceable>measure_expr</replaceable> [, <replaceable>delimiter</replaceable> ] ) WITHIN GROUP ( ORDER BY <replaceable>sort_expr</replaceable> [, ...] ) [ FILTER ( WHERE <replaceable>filter_clause</replaceable> ) ]
+</synopsis>
+
+   <para>
+    <literal>LISTAGG</literal> is a syntactic construct of the Oracle-mode
+    parser rather than a catalog function: it is rewritten into
+    <link linkend="functions-aggregate-table"><function>string_agg</function></link>
+    with the <literal>WITHIN GROUP</literal> ordering applied to the
+    aggregate, wrapped in a length check supplied by the
+    <literal>ivorysql_ora</literal> extension.  It is therefore available only
+    in Oracle mode, and <literal>LISTAGG</literal> is a reserved word there,
+    so it cannot be used as an identifier without quoting.
+   </para>
+
+   <para>
+    The following rules apply:
+    <itemizedlist>
+     <listitem>
+      <para>
+       <literal>WITHIN GROUP (ORDER BY ...)</literal> is required.  Omitting it
+       raises <errorname>LISTAGG requires WITHIN GROUP (ORDER BY ...)</errorname>.
+       The sort expression need not be the aggregated expression, and several
+       sort expressions may be given.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       The <replaceable>delimiter</replaceable> is optional; when it is
+       omitted the values are concatenated with no separator, as in Oracle.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Null values of <replaceable>measure_expr</replaceable> are ignored, and
+       a group with no input rows produces a null result rather than an empty
+       string.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       The result is limited to 4000 bytes, matching Oracle's
+       <type>VARCHAR2</type> maximum.  A longer result raises
+       <errorname>result of aggregation exceeds 4000 bytes</errorname>; a
+       result of exactly 4000 bytes is accepted.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Because the construct is rewritten, the default output column name is
+       <literal>ora_listagg_check</literal>, not <literal>listagg</literal>.
+       Use a column alias where the name matters.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    For example:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT deptno, LISTAGG(ename, '|') WITHIN GROUP (ORDER BY ename) AS employees</userinput>
+<prompt>-&gt;</prompt> <userinput>  FROM listagg_test GROUP BY deptno ORDER BY deptno;</userinput>
+ deptno |     employees
+--------+--------------------
+     10 | CLARK|KING|MILLER
+     20 | ADAMS|FORD|JONES
+     30 | ALLEN|BLAKE|MARTIN
+(3 rows)
+</screen>
+    The sort key may differ from the aggregated expression, and a
+    <literal>FILTER</literal> clause may restrict the rows that are
+    aggregated:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT LISTAGG(ename, ', ') WITHIN GROUP (ORDER BY sal DESC) AS by_salary</userinput>
+<prompt>-&gt;</prompt> <userinput>  FROM listagg_test WHERE deptno = 10;</userinput>
+      by_salary
+---------------------
+ KING, CLARK, MILLER
+(1 row)
+
+<prompt>=&gt;</prompt> <userinput>SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY ename) FILTER (WHERE sal &gt; 1500) AS well_paid</userinput>
+<prompt>-&gt;</prompt> <userinput>  FROM listagg_test;</userinput>
+             well_paid
+-----------------------------------
+ ALLEN,BLAKE,CLARK,FORD,JONES,KING
+(1 row)
+</screen>
+   </para>
+
+   <para>
+    Several parts of Oracle's <literal>LISTAGG</literal> are not implemented:
+    <itemizedlist>
+     <listitem>
+      <para>
+       The analytic form is not usable.  <literal>OVER</literal> is accepted by
+       the grammar, but the mandatory <literal>WITHIN GROUP</literal> ordering
+       cannot be carried into a window function, so such a query fails with
+       <errorname>aggregate ORDER BY is not implemented for window
+       functions</errorname>.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       An <literal>ORDER BY</literal> inside the argument list, as in
+       <literal>LISTAGG(ename ORDER BY ename) WITHIN GROUP (ORDER BY
+       ename)</literal>, is a syntax error; the ordering belongs in the
+       <literal>WITHIN GROUP</literal> clause only.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>DISTINCT</literal> and the <literal>ON OVERFLOW</literal>
+       clauses (<literal>ON OVERFLOW ERROR</literal>, <literal>ON OVERFLOW
+       TRUNCATE</literal>) are not accepted; the overflow behavior is always
+       an error.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+  </sect2>
+
  </sect1>
